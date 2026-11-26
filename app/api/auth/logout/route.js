@@ -1,0 +1,8 @@
+import { NextResponse } from 'next/server';
+import { clearSessionCookie } from '@/lib/auth';
+export async function POST() {
+  const response = NextResponse.json({ message: 'Logged out.' });
+  const cookie = clearSessionCookie();
+  response.cookies.set(cookie.name, cookie.value, cookie);
+  return response;
+}

@@ -1,20 +1,21 @@
 'use client';
 
-import { readJsonResponse } from '@/lib/http';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { readJsonResponse } from '@/lib/http';
+import type { EnrollmentDto, EnrollmentsResponse, UserDto, UserResponse } from '@/lib/types';
 
 export default function DashboardPage() {
-  const [user, setUser] = useState(null);
-  const [enrollments, setEnrollments] = useState([]);
+  const [user, setUser] = useState<UserDto | null>(null);
+  const [enrollments, setEnrollments] = useState<EnrollmentDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updating, setUpdating] = useState('');
 
-  async function load() {
+  async function load(): Promise<void> {
     try {
       const userResponse = await fetch('/api/auth/me');
-      const userData = await readJsonResponse(userResponse);
+      const userData = await readJsonResponse<UserResponse>(userResponse);
       if (!userResponse.ok || !userData.user) {
         window.location.href = '/login';
         return;
@@ -22,38 +23,38 @@ export default function DashboardPage() {
       setUser(userData.user);
 
       const enrollmentResponse = await fetch('/api/enrollments');
-      const enrollmentData = await readJsonResponse(enrollmentResponse);
+      const enrollmentData = await readJsonResponse<EnrollmentsResponse>(enrollmentResponse);
       if (!enrollmentResponse.ok) throw new Error(enrollmentData.error || 'Could not load dashboard.');
-      setEnrollments(enrollmentData.enrollments || []);
+      setEnrollments(enrollmentData.enrollments ?? []);
       setError('');
-    } catch (loadError) {
-      setError(loadError.message || 'Could not load dashboard.');
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : 'Could not load dashboard.');
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   const stats = useMemo(() => {
     const total = enrollments.length;
     const completed = enrollments.filter((enrollment) => (
       enrollment.courseId
-      && enrollment.courseId.modules?.length > 0
-      && enrollment.completedModules?.length >= enrollment.courseId.modules.length
+      && enrollment.courseId.modules.length > 0
+      && enrollment.completedModules.length >= enrollment.courseId.modules.length
     )).length;
     const progress = total
       ? Math.round(enrollments.reduce((sum, enrollment) => {
-        const moduleCount = enrollment.courseId?.modules?.length || 0;
-        return sum + (moduleCount ? (enrollment.completedModules?.length || 0) / moduleCount * 100 : 0);
+        const moduleCount = enrollment.courseId?.modules.length ?? 0;
+        return sum + (moduleCount ? enrollment.completedModules.length / moduleCount * 100 : 0);
       }, 0) / total)
       : 0;
     return { total, completed, progress };
   }, [enrollments]);
 
-  async function toggleModule(enrollment, moduleId, isDone) {
+  async function toggleModule(enrollment: EnrollmentDto, moduleId: string, isDone: boolean): Promise<void> {
     setUpdating(`${enrollment._id}-${moduleId}`);
     setError('');
     try {
@@ -62,11 +63,11 @@ export default function DashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ moduleId, completed: !isDone }),
       });
-      const data = await readJsonResponse(response);
+      const data = await readJsonResponse<{ error?: string }>(response);
       if (!response.ok) throw new Error(data.error || 'Progress update failed.');
       await load();
-    } catch (updateError) {
-      setError(updateError.message || 'Progress update failed.');
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : 'Progress update failed.');
     } finally {
       setUpdating('');
     }
@@ -79,7 +80,7 @@ export default function DashboardPage() {
       <div className="page-header dashboard-header">
         <div>
           <span className="eyebrow">STUDENT DASHBOARD</span>
-          <h1>Welcome back, {user?.name?.split(' ')[0] || 'learner'}!</h1>
+          <h1>Welcome back, {user?.name.split(' ')[0] ?? 'learner'}!</h1>
           <p>Keep building momentum. Every completed module counts.</p>
         </div>
         <Link className="button primary" href="/courses">Find a course +</Link>
@@ -113,14 +114,15 @@ export default function DashboardPage() {
           {enrollments.map((enrollment) => {
             const course = enrollment.courseId;
             if (!course) return null;
-            const total = course.modules?.length || 0;
-            const completed = enrollment.completedModules?.length || 0;
+            const total = course.modules.length;
+            const completed = enrollment.completedModules.length;
             const progress = total ? Math.round(completed / total * 100) : 0;
+            const courseStyle = { background: course.accent ?? '#2563eb' } as CSSProperties;
 
             return (
               <article className="enrolled-card" key={enrollment._id}>
                 <div className="enrolled-head">
-                  <div className="enrolled-course-mark" style={{ background: course.accent || '#2563eb' }} aria-hidden="true">
+                  <div className="enrolled-course-mark" style={courseStyle} aria-hidden="true">
                     {course.category === 'Cybersecurity' ? '⌘' : course.category === 'Data' ? '▥' : course.category === 'Programming' ? '{}' : '⌁'}
                   </div>
                   <div className="enrolled-title">
@@ -130,7 +132,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="enrolled-progress-number">{progress}%</div>
                 </div>
-                <div className="progress-track large"><div style={{ width: `${progress}%`, background: course.accent || '#2563eb' }} /></div>
+                <div className="progress-track large"><div style={{ width: `${progress}%`, background: course.accent ?? '#2563eb' }} /></div>
                 <div className="progress-caption">
                   <span>{completed} of {total} modules completed</span>
                   {progress === 100 ? <span className="completed-label">Course completed ✓</span> : <span>{total - completed} remaining</span>}
@@ -138,12 +140,12 @@ export default function DashboardPage() {
                 <details className="module-details">
                   <summary>{progress === 100 ? 'Review course modules' : 'View modules and update progress'}</summary>
                   <div className="dashboard-modules">
-                    {course.modules?.map((module, index) => {
-                      const done = enrollment.completedModules?.some((id) => String(id) === String(module._id));
+                    {course.modules.map((module, index) => {
+                      const done = enrollment.completedModules.includes(module._id);
                       const isBusy = updating === `${enrollment._id}-${module._id}`;
                       return (
                         <label className={`module-check ${done ? 'is-done' : ''}`} key={module._id}>
-                          <input type="checkbox" checked={!!done} disabled={!!updating} onChange={() => toggleModule(enrollment, module._id, !!done)} />
+                          <input type="checkbox" checked={done} disabled={!!updating} onChange={() => void toggleModule(enrollment, module._id, done)} />
                           <span className="module-check-content"><strong>{index + 1}. {module.title}</strong><small>{module.description}</small></span>
                           {isBusy && <span className="updating-text">Saving…</span>}
                         </label>

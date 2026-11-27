@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
 import { hashPassword, createSession, sessionCookie } from '@/lib/auth';
-export async function POST(request) {
+export async function POST(request: Request) {
   try {
-    const { name, email, password } = await request.json();
+    const { name, email, password } = await request.json() as { name?: string; email?: string; password?: string };
     if (!name?.trim() || !email?.trim() || !password) return NextResponse.json({ error: 'All fields are required.' }, { status: 400 });
     if (password.length < 6) return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
     await connectDB();
